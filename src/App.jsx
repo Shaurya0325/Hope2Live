@@ -2328,14 +2328,6 @@ function DashboardPage({
   const [myRequests, setMyRequests] =
     useState([]);
 
-  const activeRequests = myRequests.filter(
-    (request) => request.status === "Open"
-  );
-  const activeRequest = activeRequests[0] || null;
-  const activeRequestIds = activeRequests
-    .map((request) => request.id)
-    .join(",");
-
   const [requestsLoading, setRequestsLoading] =
     useState(false);
 
@@ -2374,15 +2366,41 @@ function DashboardPage({
   const [recipientResponsesLoading, setRecipientResponsesLoading] =
     useState(false);
 
+  const hiddenRequestStatuses = ["cancelled", "closed", "expired"];
+  const completedRequestStatuses = ["completed", "fulfilled"];
+  // A request belongs in Past only after a donation is actually completed.
+  // Rejected/declined donors do not make the request a past request.
+  const isRequestPast = (request) => {
+    const requestStatus = String(request.status || "").trim().toLowerCase();
+    // A donor completing their donation does not close the recipient's request.
+    // Only the recipient's explicit Close Request action moves it to Past.
+    return completedRequestStatuses.includes(requestStatus);
+  };
+
+  // Cancelled/closed/expired requests are hidden; only live requests appear here.
+  const activeRequests = myRequests.filter((request) => {
+    const status = String(request.status || "").trim().toLowerCase();
+    return !hiddenRequestStatuses.includes(status) && !isRequestPast(request);
+  });
+  const pastRequests = myRequests.filter(isRequestPast);
+  const activeRequest = activeRequests[0] || null;
+  const activeRequestIds = activeRequests.map((request) => request.id).join(",");
+
   const currentRequestResponses = recipientResponses.filter((response) =>
     activeRequests.some((request) => request.id === response.request_id)
   );
-  const acceptedChatResponses = currentRequestResponses.filter(
-    (response) => ["Accepted", "Completed"].includes(response.status)
-  );
-  const pendingDonorResponses = currentRequestResponses.filter(
-    (response) => response.status === "Interested"
-  );
+  const activeDonorResponses = currentRequestResponses
+    .filter((response) => ["Interested", "Accepted", "Completed"].includes(response.status))
+    .sort((first, second) => {
+      const firstDistance = Number(first.distance_km);
+      const secondDistance = Number(second.distance_km);
+      const firstKnown = first.distance_km != null && Number.isFinite(firstDistance);
+      const secondKnown = second.distance_km != null && Number.isFinite(secondDistance);
+      if (firstKnown && secondKnown) return firstDistance - secondDistance;
+      if (firstKnown) return -1;
+      if (secondKnown) return 1;
+      return new Date(second.created_at) - new Date(first.created_at);
+    });
 
   const visibleMatchingRequests = useMemo(
     () =>
@@ -3137,7 +3155,7 @@ function DashboardPage({
 
       // Primary source: server-side RPC. This keeps donor GPS/contact data private.
       const { data: rpcData, error: rpcError } = await supabase.rpc(
-        "get_request_donation_responses",
+        "get_request_donation_responses_v2",
         { recipient_id: user.id }
       );
 
@@ -3232,11 +3250,11 @@ function DashboardPage({
      PRIVATE DONATION CHAT
   ========================================================= */
 
-  const fetchChatMessages = async (responseId) => {
+  const fetchChatMessages = async (responseId, { silent = false } = {}) => {
     if (!responseId || !user?.id) return;
 
-    setChatLoading(true);
-    setChatError("");
+    if (!silent) setChatLoading(true);
+    if (!silent) setChatError("");
 
     try {
       const { data, error } = await supabase
@@ -3248,7 +3266,8 @@ function DashboardPage({
       if (error) {
         console.error("Chat fetch error:", error);
         setChatMessages([]);
-        setChatError("Unable to load this conversation right now. Please try again.");
+        const detail = [error.code, error.message, error.details, error.hint].filter(Boolean).join(" — ");
+        setChatError(detail ? `Chat load failed: ${detail}` : "Unable to load this conversation right now. Please try again.");
         return;
       }
 
@@ -3256,9 +3275,9 @@ function DashboardPage({
     } catch (error) {
       console.error("Unexpected chat fetch error:", error);
       setChatMessages([]);
-      setChatError("Unable to load this conversation right now. Please try again.");
+      setChatError(error?.message ? `Chat load failed: ${error.message}` : "Unable to load this conversation right now. Please try again.");
     } finally {
-      setChatLoading(false);
+      if (!silent) setChatLoading(false);
     }
   };
 
@@ -3280,7 +3299,8 @@ function DashboardPage({
 
       if (error || !data) {
         console.error("Open chat response error:", error);
-        setChatError("This conversation is not available right now.");
+        const detail = error ? [error.code, error.message, error.details, error.hint].filter(Boolean).join(" — ") : "No matching donor response row was found.";
+        setChatError(`Unable to open chat: ${detail}`);
         return;
       }
 
@@ -3292,8 +3312,8 @@ function DashboardPage({
         status: data.status,
       };
 
-      if (!["Accepted", "Completed"].includes(data.status)) {
-        setChatError("Accept this donor first to unlock the private chat.");
+      if (!["Interested", "Accepted", "Completed"].includes(data.status)) {
+        setChatError("This donor response is no longer active.");
         return;
       }
 
@@ -3398,10 +3418,50 @@ function DashboardPage({
         return;
       }
 
-      await fetchRecipientResponses();
+      await Promise.all([
+        fetchMyRequests(),
+        fetchRecipientResponses(),
+      ]);
     } catch (error) {
       console.error("Unexpected accept donor error:", error);
       setChatError("Unable to accept this donor right now. Please try again.");
+    }
+  };
+
+  const handleRejectDonor = async (responseId) => {
+    if (!user?.id || !responseId || donationLoading) return;
+
+    const confirmed = window.confirm(
+      "Are you sure you want to reject this accepted donor? This will close the donor conversation and remove its chat history."
+    );
+    if (!confirmed) return;
+
+    setDonationLoading(true);
+    setChatError("");
+    setRequestError("");
+
+    try {
+      const { data, error } = await supabase.rpc(
+        "recipient_reject_donation_response",
+        { target_response_id: responseId }
+      );
+
+      if (error || data !== true) {
+        console.error("Reject donor error:", error);
+        setChatError(error?.message || "Unable to reject this donor right now. Please try again.");
+        return;
+      }
+
+      setRecipientResponses((previous) =>
+        previous.filter((response) => response.response_id !== responseId)
+      );
+      if (selectedResponse?.response_id === responseId) closeDonationChat();
+      await fetchRecipientResponses();
+    } catch (error) {
+      console.error("Unexpected reject donor error:", error);
+      setChatError(error?.message || "Unable to reject this donor right now. Please try again.");
+    } finally {
+      setDonationLoading(false);
     }
   };
 
@@ -3454,7 +3514,7 @@ function DashboardPage({
     if (!chatOpen || !selectedResponse?.response_id) return;
 
     const interval = setInterval(() => {
-      fetchChatMessages(selectedResponse.response_id);
+      fetchChatMessages(selectedResponse.response_id, { silent: true });
     }, 3000);
 
     return () => clearInterval(interval);
@@ -3632,11 +3692,13 @@ function DashboardPage({
   useEffect(() => {
     if (!canRequestBlood || !user?.id) return;
 
+    fetchMyRequests();
     fetchRecipientResponses();
 
-    // Refresh periodically so a recipient sees a donor response without
-    // needing to leave the dashboard or manually refresh the page.
+    // Keep both the request lifecycle and donor responses in sync. This is
+    // important after accepting a donor or when a request status changes.
     const interval = setInterval(() => {
+      fetchMyRequests();
       fetchRecipientResponses();
     }, 5000);
 
@@ -3833,6 +3895,47 @@ function DashboardPage({
      CANCEL BLOOD REQUEST
   ========================================================= */
 
+  const handleCloseBloodRequest = async (requestId) => {
+    if (!user?.id || !requestId || donationLoading) return;
+    const confirmed = window.confirm(
+      "Are you sure you want to close this blood request? It will move to Past Requests and donors will no longer be able to respond."
+    );
+    if (!confirmed) return;
+
+    setDonationLoading(true);
+    setRequestError("");
+    try {
+      const { data, error } = await supabase.rpc(
+        "recipient_close_blood_request",
+        { target_request_id: requestId }
+      );
+      if (error || data !== true) {
+        console.error("Close blood request error:", error);
+        setRequestError(
+          error?.message ||
+          (data === false
+            ? "Request was not closed. It may already be closed, or this account may not own it."
+            : "Unable to close this request. Make sure the latest Hope2Live SQL migration is installed.")
+        );
+        return;
+      }
+      setMyRequests((previous) =>
+        previous.map((request) =>
+          request.id === requestId ? { ...request, status: "Completed" } : request
+        )
+      );
+      setRecipientResponses((previous) =>
+        previous.filter((response) => response.request_id !== requestId)
+      );
+      await fetchMyRequests();
+    } catch (error) {
+      console.error("Unexpected close request error:", error);
+      setRequestError(error?.message || "Unable to close this request right now.");
+    } finally {
+      setDonationLoading(false);
+    }
+  };
+
   const handleCancelBloodRequest = async (
     requestId
   ) => {
@@ -3976,12 +4079,12 @@ function DashboardPage({
       profile?.longitude,
     ]);
 
-  const pastRequests = myRequests.filter(
-    (request) => request.status !== "Open"
-  );
   const selectedChatRequest = myRequests.find(
     (request) => request.id === selectedResponse?.request_id
   );
+
+  const formatRequestId = (requestId) =>
+    requestId ? `REQ-${String(requestId).toUpperCase()}` : "REQ-UNAVAILABLE";
 
   const renderBloodRequest = (request) => (
     <div className="dashboard-info-card donor-welcome-card request-history-card">
@@ -3991,6 +4094,9 @@ function DashboardPage({
 
       <p className="eyebrow">
         {request.urgency || "NORMAL"} REQUEST
+      </p>
+      <p className="request-id-chip" title={`Full request ID: ${request.id}`}>
+        {formatRequestId(request.id)}
       </p>
 
       <h2>{request.blood_group} blood needed</h2>
@@ -4018,15 +4124,11 @@ function DashboardPage({
         <span>Status: {request.status}</span>
       </div>
 
-      {request.status === "Open" && (
-        <button
-          type="button"
-          className="secondary-button"
-          onClick={() => handleCancelBloodRequest(request.id)}
-        >
-          Cancel request
+      <div className="request-card-actions">
+        <button type="button" className="primary-button request-close-button" onClick={() => handleCloseBloodRequest(request.id)} disabled={donationLoading}>
+          Close request
         </button>
-      )}
+      </div>
     </div>
   );
 
@@ -4993,44 +5095,36 @@ function DashboardPage({
               ) : (
                 <Reveal className="empty-request-card">
                   <h3>No active request</h3>
-                  <p>Your previous requests are available below.</p>
+                  <p>Only your currently active blood requests appear here.</p>
                 </Reveal>
               )}
 
-              {pastRequests.length > 0 && (
-                <div className={`past-requests ${pastRequestsOpen ? "is-open" : ""}`}>
-                  <button
-                    type="button"
-                    className="past-requests-toggle"
-                    aria-expanded={pastRequestsOpen}
-                    aria-controls="past-requests-panel"
-                    onClick={() => setPastRequestsOpen((open) => !open)}
-                  >
-                    <span>
-                      <strong>Past requests</strong>
-                      <small>{pastRequests.length} request{pastRequests.length === 1 ? "" : "s"}</small>
-                    </span>
-                    <span className="past-requests-chevron" aria-hidden="true">⌄</span>
-                  </button>
 
-                  <div
-                    id="past-requests-panel"
-                    className="past-requests-panel"
-                    aria-hidden={!pastRequestsOpen}
-                    inert={!pastRequestsOpen}
-                  >
-                    <div className="past-requests-content">
-                      {pastRequests.map((request) => (
-                        <Reveal key={request.id}>
-                          {renderBloodRequest(request)}
-                        </Reveal>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           )}
+
+          <div className={`past-requests ${pastRequestsOpen ? "is-open" : ""}`}>
+            <button type="button" className="past-requests-toggle" onClick={() => setPastRequestsOpen((open) => !open)} aria-expanded={pastRequestsOpen}>
+              <span><strong>Past requests</strong><small>{pastRequests.length} completed {pastRequests.length === 1 ? "request" : "requests"}</small></span>
+              <span className="past-requests-chevron" aria-hidden="true">⌄</span>
+            </button>
+            <div className="past-requests-panel">
+              <div className="past-requests-content request-history">
+                {pastRequests.length > 0 ? pastRequests.map((request) => (
+                  <Reveal key={request.id}>
+                    <div className="dashboard-info-card request-history-card past-request-card">
+                      <p className="eyebrow">CLOSED REQUEST</p>
+                      <p className="request-id-chip">{formatRequestId(request.id)}</p>
+                      <h2>{request.blood_group} blood needed</h2>
+                      <p>📍 {request.location}</p>
+                      {request.required_date && <p>📅 Needed by {new Date(`${request.required_date}T00:00:00`).toLocaleDateString("en-IN")}</p>}
+                      <div className="availability-status"><span className="status-dot" style={{ background: "#7ee787" }}></span><span>Status: Closed</span></div>
+                    </div>
+                  </Reveal>
+                )) : <p className="past-requests-empty">No completed requests yet.</p>}
+              </div>
+            </div>
+          </div>
 
         </section>
       )}
@@ -5134,131 +5228,79 @@ function DashboardPage({
             </Reveal>
           ) : (
             <>
-            {acceptedChatResponses.length > 0 && (
-            <div className="current-request-chats">
-              <h3>Accepted donor chats</h3>
-              <div className="donor-dashboard-grid">
-              {acceptedChatResponses.map((response) => {
-                const request = activeRequests.find(
-                  (item) => item.id === response.request_id
-                );
-
-                return (
-                <Reveal key={response.response_id}>
-                  <div className="dashboard-info-card donor-welcome-card">
-                    <div className="donor-card-icon">
-                      ❤️
-                    </div>
-
-                    <p className="eyebrow">CURRENT REQUEST CHAT</p>
-
-                    <h2>
-                      A donor is willing to donate
-                    </h2>
-
-                    <p>
-                      🩸 Compatible donor response
-                    </p>
-
-                    <p>
-                      Request: {request?.blood_group || "Blood"} blood • {request?.location || "Location unavailable"}
-                    </p>
-
-                    {response.distance_km != null &&
-                      Number.isFinite(Number(response.distance_km)) && (
-                        <p>
-                          📏 {Number(response.distance_km).toFixed(1)} km away
-                        </p>
-                      )}
-
-                    <div className="availability-status">
-                      <span
-                        className="status-dot"
-                        style={{
-                          background:
-                            response.status === "Accepted"
-                              ? "#7ee787"
-                              : "#ffd166",
-                        }}
-                      ></span>
-
-                      <span>
-                        {response.status === "Completed"
-                          ? "Donation marked complete"
-                          : response.status === "Accepted"
-                            ? "Donor accepted — you can coordinate now"
-                            : "Donation interest received"}
-                      </span>
-                    </div>
-
-                    <div
-                      style={{
-                        display: "flex",
-                        flexWrap: "wrap",
-                        gap: "10px",
-                        marginTop: "16px",
-                      }}
-                    >
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        onClick={() => openDonationChat(response)}
-                      >
-                        💬 Open chat for this request
-                      </button>
-                    </div>
-
-                    <p
-                      style={{
-                        marginTop: "12px",
-                        opacity: 0.75,
-                      }}
-                    >
-                      🔒 No phone numbers or exact GPS locations are shared.
-                      Use the private chat to agree on a safe public meeting point.
-                    </p>
-                  </div>
-                </Reveal>
-                );
-              })}
-              </div>
-            </div>
-            )}
-
-            {pendingDonorResponses.length > 0 && (
-              <div className="pending-current-donors">
-                <h3>Waiting for your acceptance</h3>
-                <div className="pending-donor-list">
-                  {pendingDonorResponses.map((response) => {
-                    const request = activeRequests.find(
-                      (item) => item.id === response.request_id
-                    );
-
+            {(() => {
+              const acceptedDonors = activeDonorResponses.filter((response) =>
+                ["Accepted", "Completed"].includes(response.status)
+              );
+              const willingDonors = activeDonorResponses.filter((response) =>
+                response.status === "Interested"
+              );
+              const renderDonorRows = (responses, startIndex = 0, accepted = false) => (
+                <div className="hope-donor-list">
+                  {responses.map((response, index) => {
+                    const request = activeRequests.find((item) => item.id === response.request_id);
+                    const donorLabel = response.donor_name || `Donor ${startIndex + index + 1}`;
+                    const initials = donorLabel.split(/\s+/).slice(0, 2).map((part) => part[0] || "").join("").toUpperCase();
+                    const distance = response.distance_km != null && Number.isFinite(Number(response.distance_km))
+                      ? `${Number(response.distance_km).toFixed(1)} km`
+                      : "Not available";
                     return (
-                    <div className="pending-donor-row" key={response.response_id}>
-                      <div>
-                        <strong>Donor response</strong>
-                        <span>
-                          {request?.blood_group || "Blood"} blood • {request?.location || "Location unavailable"}
-                        </span>
-                        {response.distance_km != null && Number.isFinite(Number(response.distance_km)) && (
-                          <small>{Number(response.distance_km).toFixed(1)} km away</small>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        className="primary-button"
-                        onClick={() => handleAcceptDonor(response.response_id)}
-                      >
-                        Accept donor
-                        <span>✓</span>
-                      </button>
-                    </div>
+                      <article className={`hope-donor-card ${accepted ? "is-accepted" : "is-waiting"}`} key={response.response_id}>
+                        <div className="hope-donor-person">
+                          <div className="hope-donor-avatar">{initials || "D"}</div>
+                          <div className="hope-donor-identity">
+                            <strong>{donorLabel}</strong>
+                            <span>{request?.blood_group || "Blood"} blood <i /> {distance} away</span>
+                            <small>{request?.location || "Location unavailable"} · {formatRequestId(response.request_id)}</small>
+                          </div>
+                        </div>
+                        <div className="hope-donor-meta">
+                          <span className="hope-meta-label">Distance</span>
+                          <strong>{distance}</strong>
+                          {Number.isFinite(Number(response.distance_km)) && Number(response.distance_km) === 0 && <em>Nearest</em>}
+                        </div>
+                        <div className="hope-donor-status">
+                          <span className="hope-meta-label">Status</span>
+                          <strong className={accepted ? "accepted-pill" : "waiting-pill"}>
+                            {response.status === "Completed" ? "Donation complete" : accepted ? "Accepted" : "Waiting"}
+                          </strong>
+                        </div>
+                        <div className="hope-donor-actions">
+                          <button type="button" className="hope-chat-button" onClick={() => openDonationChat(response)}>💬 Chat <span>›</span></button>
+                          {!accepted && response.status === "Interested" && (
+                            <button type="button" className="hope-accept-button" onClick={() => handleAcceptDonor(response.response_id)} disabled={donationLoading}>
+                              {donationLoading ? "Accepting…" : "Accept donor"}
+                            </button>
+                          )}
+                        </div>
+                      </article>
                     );
                   })}
                 </div>
-              </div>
-            )}
+              );
+              return (
+                <div className="hope-donor-groups">
+                  {acceptedDonors.length > 0 && (
+                    <section className="hope-donor-panel hope-accepted-panel">
+                      <header className="hope-donor-panel-heading">
+                        <span className="hope-panel-icon">✓</span>
+                        <div><h3>Accepted donors <b>{acceptedDonors.length}</b></h3><p>These donors are accepted. Open a private chat to coordinate with each one.</p></div>
+                      </header>
+                      {renderDonorRows(acceptedDonors, 0, true)}
+                    </section>
+                  )}
+                  <section className="hope-donor-panel hope-waiting-panel">
+                    <header className="hope-donor-panel-heading">
+                      <span className="hope-panel-icon">♧</span>
+                      <div><h3>People willing to donate <b>{willingDonors.length}</b></h3><p>Other donors waiting for acceptance, sorted by nearest first.</p></div>
+                    </header>
+                    {willingDonors.length > 0
+                      ? renderDonorRows(willingDonors, acceptedDonors.length, false)
+                      : <div className="hope-donor-empty"><span>♧</span><strong>{acceptedDonors.length > 0 ? "No other donors are waiting for acceptance." : "No donors are waiting yet."}</strong><small>New donor responses will appear here automatically.</small></div>}
+                  </section>
+                </div>
+              );
+            })()}
             </>
           )}
 
@@ -5437,6 +5479,9 @@ function DashboardPage({
                         {request.blood_group} blood needed
                       </h2>
 
+                      <p className="request-id-chip" title={`Full request ID: ${request.id}`}>
+                        {formatRequestId(request.id)}
+                      </p>
                       <p>
                         📍 Nearby support area
                       </p>
@@ -5676,7 +5721,7 @@ function DashboardPage({
                   PRIVATE DONATION CHAT
                 </p>
                 <h2 style={{ margin: "4px 0 0" }}>
-                  Coordinate the donation 💬
+                  {selectedResponse.donor_name ? `Chat with ${selectedResponse.donor_name}` : "Coordinate the donation 💬"}
                 </h2>
                 {selectedChatRequest && (
                   <p style={{ margin: "5px 0 0", opacity: 0.82 }}>
@@ -5691,7 +5736,18 @@ function DashboardPage({
                   )}
               </div>
 
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                {!isCurrentUserResponseDonor &&
+                  selectedResponse.status === "Accepted" && (
+                    <button
+                      type="button"
+                      className="secondary-button reject-donor-button"
+                      onClick={() => handleRejectDonor(selectedResponse.response_id)}
+                      disabled={donationLoading}
+                    >
+                      {donationLoading ? "Updating..." : "Reject donor"}
+                    </button>
+                  )}
                 {isCurrentUserResponseDonor &&
                   ["Interested", "Accepted"].includes(selectedResponse.status) && (
                     <button

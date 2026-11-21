@@ -4716,3 +4716,315 @@ a {
     transform: none;
   }
 }
+
+/* =========================================================
+   COMPACT DASHBOARD CARDS — less empty space, clearer hierarchy
+========================================================= */
+.request-history {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  align-items: start;
+  gap: 14px;
+}
+
+.request-history-card {
+  padding: 20px 22px;
+  border-radius: 18px;
+  min-height: 0;
+}
+
+.request-history-card .donor-card-icon {
+  width: 42px;
+  height: 42px;
+  margin: 0 0 14px;
+  border-radius: 13px;
+  font-size: 18px;
+}
+
+.request-history-card h2 {
+  max-width: none;
+  margin-top: 7px;
+  font-family: inherit;
+  font-size: clamp(22px, 2vw, 27px);
+  line-height: 1.2;
+}
+
+.request-history-card > p:not(.eyebrow) {
+  max-width: none;
+  margin-top: 9px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.request-history-card .availability-status {
+  margin-top: 16px;
+  padding: 8px 10px;
+  font-size: 11px;
+}
+
+.request-history-card .secondary-button {
+  margin-top: 13px;
+  min-height: 36px;
+  padding: 8px 13px;
+  font-size: 12px;
+}
+
+.donor-dashboard-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 14px;
+}
+
+.donor-dashboard-grid .donor-welcome-card {
+  padding: 22px;
+  border-radius: 18px;
+}
+
+.donor-dashboard-grid .donor-card-icon {
+  width: 44px;
+  height: 44px;
+  margin-bottom: 18px;
+  border-radius: 13px;
+  font-size: 19px;
+}
+
+.donor-dashboard-grid .donor-welcome-card h2 {
+  font-size: clamp(25px, 2.4vw, 32px);
+}
+
+@media (max-width: 700px) {
+  .request-history {
+    grid-template-columns: 1fr;
+  }
+  .request-history-card {
+    padding: 18px;
+  }
+}
+
+/* Compact, readable request identifier shared by donor and recipient cards */
+.request-id-chip {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  margin: 4px 0 10px !important;
+  padding: 5px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  color: inherit;
+  font-size: 10px !important;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.request-history-card .request-id-chip {
+  border-color: rgba(145, 40, 67, 0.16);
+  background: rgba(145, 40, 67, 0.07);
+  color: var(--red-dark);
+}
+
+.donor-dashboard-grid .request-id-chip {
+  margin-bottom: 8px !important;
+}
+
+/* Recipient request controls */
+.request-cancel-button {
+  margin-top: 14px;
+  border-color: rgba(190, 45, 75, 0.28);
+  color: #a51f43;
+}
+
+.reject-donor-button {
+  border-color: rgba(190, 45, 75, 0.32) !important;
+  color: #a51f43 !important;
+}
+
+.pending-donor-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+@media (max-width: 640px) {
+  .pending-donor-actions {
+    width: 100%;
+  }
+
+  .pending-donor-actions button {
+    flex: 1 1 140px;
+  }
+}
+
+
+/* Recipient multi-donor workflow */
+.request-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 14px;
+}
+.request-card-actions .primary-button,
+.request-card-actions .secondary-button {
+  min-height: 38px;
+  padding: 9px 13px;
+  font-size: 12px;
+}
+.request-close-button {
+  background: linear-gradient(135deg, #a92c4d, #7d1d3a);
+  color: #fff;
+}
+.past-requests-empty {
+  margin: 0;
+  padding: 16px 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.donor-distance-hint {
+  margin: -4px 0 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.recipient-donor-response-row {
+  align-items: center;
+}
+.recipient-donor-response-row > div:first-child {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.recipient-donor-response-row > div:first-child strong {
+  color: var(--ink);
+  font-size: 15px;
+}
+.recipient-donor-response-row > div:first-child span,
+.recipient-donor-response-row > div:first-child small {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.recipient-donor-response-row .pending-donor-actions {
+  flex-wrap: wrap;
+}
+.recipient-donor-response-row .pending-donor-actions button {
+  min-height: 36px;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+.past-request-card {
+  background: rgba(255,255,255,.94);
+}
+@media (max-width: 700px) {
+  .request-card-actions > button { flex: 1 1 100%; }
+  .recipient-donor-response-row { align-items: stretch; }
+  .recipient-donor-response-row .pending-donor-actions { width: 100%; }
+  .recipient-donor-response-row .pending-donor-actions button { flex: 1 1 auto; }
+}
+
+/* Hope2Live — refreshed donor response area only */
+.donor-request-section .section-heading {
+  align-items: flex-end;
+  gap: 18px;
+  margin-bottom: 22px;
+}
+.donor-request-section .section-heading h2 {
+  font-family: var(--font-display, "Inter", sans-serif);
+  font-size: clamp(28px, 3vw, 40px);
+  letter-spacing: -0.035em;
+  line-height: 1.12;
+}
+.donor-request-section .section-heading .eyebrow {
+  letter-spacing: .16em;
+  font-weight: 800;
+}
+.donor-request-section .current-request-summary {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  gap: 8px;
+  padding: 22px 24px;
+  border: 1px solid rgba(232, 76, 112, .18);
+  border-left: 4px solid #ed4267;
+  border-radius: 18px;
+  background: linear-gradient(110deg, #fff7f8 0%, #fff 55%, #fff0f4 100%);
+  box-shadow: 0 12px 35px rgba(179, 49, 81, .055);
+}
+.donor-request-section .current-request-summary strong { font-size: 17px; }
+.donor-request-section .current-request-summary > span:last-child { font-size: 13px; }
+.hope-donor-groups { display: grid; gap: 16px; margin-top: 16px; }
+.hope-donor-panel {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid transparent;
+  border-radius: 22px;
+  box-shadow: 0 12px 34px rgba(28, 42, 75, .045);
+}
+.hope-accepted-panel {
+  border-color: #d5f0e3;
+  background: linear-gradient(135deg, #f1fbf6 0%, #f8fdfb 100%);
+}
+.hope-waiting-panel {
+  border-color: #dce8ff;
+  background: linear-gradient(135deg, #f3f7ff 0%, #fafcff 100%);
+}
+.hope-donor-panel-heading { display: flex; align-items: center; gap: 13px; margin: 0 0 16px; }
+.hope-panel-icon {
+  width: 42px; height: 42px; flex: 0 0 42px; display: grid; place-items: center;
+  border-radius: 50%; font-size: 21px; font-weight: 900;
+}
+.hope-accepted-panel .hope-panel-icon { color: #fff; background: linear-gradient(145deg, #24bd7c, #07965d); box-shadow: 0 5px 14px #0eaa6d35; }
+.hope-waiting-panel .hope-panel-icon { color: #fff; background: linear-gradient(145deg, #6da4ff, #3479ed); box-shadow: 0 5px 14px #3479ed35; }
+.hope-donor-panel-heading h3 { display: flex; align-items: center; gap: 10px; margin: 0; color: #15213b; font-size: 19px; font-weight: 800; letter-spacing: -.02em; }
+.hope-donor-panel-heading h3 b { display: inline-grid; min-width: 23px; height: 23px; padding: 0 7px; place-items: center; border-radius: 20px; color: white; background: #df3f65; font-size: 12px; }
+.hope-waiting-panel .hope-donor-panel-heading h3 b { background: #4b8bf2; }
+.hope-donor-panel-heading p { margin: 4px 0 0; color: #64718e; font-size: 13px; line-height: 1.45; }
+.hope-donor-list { display: grid; gap: 10px; }
+.hope-donor-card {
+  display: grid; grid-template-columns: minmax(220px, 1.5fr) minmax(105px, .65fr) minmax(105px, .65fr) auto;
+  align-items: center; gap: 18px; min-width: 0; padding: 15px 17px;
+  border: 1px solid rgba(30, 45, 75, .07); border-radius: 16px; background: rgba(255,255,255,.92);
+  box-shadow: 0 5px 18px rgba(25, 40, 70, .045); transition: transform .18s ease, box-shadow .18s ease;
+}
+.hope-donor-card:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(25,40,70,.09); }
+.hope-donor-person { display: flex; align-items: center; gap: 13px; min-width: 0; }
+.hope-donor-avatar { width: 46px; height: 46px; flex: 0 0 46px; display: grid; place-items: center; border-radius: 50%; color: #bd3155; background: #ffe8ed; font-weight: 850; }
+.hope-waiting-panel .hope-donor-avatar { color: #3479ed; background: #e8f0ff; }
+.hope-donor-identity { display: grid; gap: 4px; min-width: 0; }
+.hope-donor-identity strong { color: #17213a; font-size: 14px; font-weight: 800; overflow-wrap: anywhere; }
+.hope-donor-identity span, .hope-donor-identity small { color: #64718e; font-size: 12px; }
+.hope-donor-identity span { display: flex; align-items: center; gap: 7px; }
+.hope-donor-identity span i { width: 3px; height: 3px; border-radius: 50%; background: #a3acc0; }
+.hope-donor-meta, .hope-donor-status { display: grid; gap: 5px; min-height: 44px; align-content: center; padding-left: 18px; border-left: 1px solid #e8ebf2; }
+.hope-meta-label { color: #8490a7; font-size: 11px; }
+.hope-donor-meta > strong { color: #18233d; font-size: 14px; }
+.hope-donor-meta em { width: fit-content; padding: 3px 8px; border-radius: 20px; color: #078a58; background: #d9f7e8; font-size: 10px; font-style: normal; font-weight: 800; }
+.accepted-pill, .waiting-pill { width: fit-content; padding: 5px 10px; border-radius: 8px; font-size: 11px; font-weight: 800; }
+.accepted-pill { color: #b82c50; background: #ffe2e9; }
+.waiting-pill { color: #2869ca; background: #e5efff; }
+.hope-donor-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+.hope-chat-button, .hope-accept-button { min-height: 40px; padding: 0 15px; border-radius: 11px; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; white-space: nowrap; }
+.hope-chat-button { display: inline-flex; align-items: center; gap: 12px; color: #fff; border: 1px solid #d7355b; background: linear-gradient(110deg, #ed4267, #c91e49); box-shadow: 0 7px 16px rgba(205, 39, 81, .16); }
+.hope-chat-button span { font-size: 19px; line-height: 1; }
+.hope-accept-button { color: #2368c9; border: 1px solid #c9dcff; background: #f4f8ff; }
+.hope-chat-button:disabled, .hope-accept-button:disabled { opacity: .55; cursor: not-allowed; }
+.hope-donor-empty { display: grid; justify-items: center; gap: 7px; padding: 26px 14px; border: 1px dashed #cbdaf6; border-radius: 15px; background: rgba(255,255,255,.55); text-align: center; }
+.hope-donor-empty > span { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 50%; color: #7487aa; background: #eaf0fb; font-size: 21px; }
+.hope-donor-empty strong { color: #39496a; font-size: 14px; }
+.hope-donor-empty small { color: #8390aa; font-size: 12px; }
+@media (max-width: 900px) {
+  .hope-donor-card { grid-template-columns: minmax(0, 1fr) minmax(95px, .45fr) auto; }
+  .hope-donor-status { display: none; }
+}
+@media (max-width: 620px) {
+  .donor-request-section { margin-top: 42px; }
+  .donor-request-section .section-heading { align-items: flex-start; flex-direction: column; }
+  .donor-request-section .section-heading h2 { font-size: 28px; }
+  .hope-donor-panel { padding: 13px; border-radius: 17px; }
+  .hope-donor-panel-heading h3 { font-size: 16px; }
+  .hope-donor-panel-heading p { font-size: 12px; }
+  .hope-donor-card { grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 13px; }
+  .hope-donor-meta { grid-column: 1; padding: 0 0 0 59px; border: 0; }
+  .hope-donor-actions { grid-column: 2; grid-row: 1 / span 2; flex-direction: column; align-items: stretch; }
+  .hope-chat-button, .hope-accept-button { justify-content: center; min-height: 38px; padding: 0 11px; }
+}
